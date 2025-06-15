@@ -16,6 +16,14 @@ const activeBtn = $(".active-btn");
 
 let cardIndex = null;
 
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    completedBtn.classList.remove("active");
+    activeBtn.classList.remove("active");
+    renderTask();
+  }
+});
+
 const filterCompletedTask = (button1, button2) => {
   if (
     button1.classList.contains("active") ||
