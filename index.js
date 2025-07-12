@@ -116,10 +116,98 @@ modalClose.onclick = closeModal;
 btnCancel.onclick = closeModal;
 
 // List of tasks
-const todoTasks = JSON.parse(localStorage.getItem("tasks")) ?? [];
+// const todoTasks = JSON.parse(localStorage.getItem("tasks")) ?? [];
+
+let todoTasks = [];
+const getTask = async (id = null) => {
+  try {
+    const res = id
+      ? await axios.get(`http://localhost:3000/tasks/${id}`)
+      : await axios.get("http://localhost:3000/tasks");
+    return res.data;
+  } catch (error) {
+    console.log(`Error: Cannot GET HTTP: ${error.status}`);
+  }
+};
+
+const init = async () => {
+  todoTasks = await getTask();
+};
+
+const postTask = async (task) => {
+  try {
+    const res = await axios.post("http://localhost:3000/tasks", task);
+  } catch (error) {
+    console.log(
+      `Cannot Get HTTP Request: ${error.status} and ${error.request}`,
+    );
+  }
+};
+
+const handleAddTask = async (formData) => {
+  Swal.fire({
+    title: "Added Successfully!",
+    icon: "success",
+    draggable: true,
+  });
+  // todoTasks.unshift(formData);
+  await postTask(formData);
+  renderTask();
+  if (completedBtn.classList.contains("active")) {
+    filterCompletedTask(activeBtn, completedBtn);
+    completedBtn.classList.add("active");
+  } else {
+    filterCompletedTask(completedBtn, activeBtn);
+    activeBtn.classList.add("active");
+  }
+};
+
+const patchTask = async (task, id) => {
+  try {
+    const res = await axios.patch(`http://localhost:3000/tasks/${id}`, task);
+  } catch (error) {
+    console.log(
+      `Cannot Get HTTP Request: ${error.status} and ${error.request}`,
+    );
+  }
+};
+
+const handleEditTask = (formData, tempIndex) => {
+  Swal.fire({
+    title: "Do you want to save the changes?",
+    showDenyButton: true,
+    showCancelButton: true,
+    confirmButtonText: "Save",
+    denyButtonText: `Don't save`,
+  }).then(async (result) => {
+    /* Read more about isConfirmed, isDenied below */
+    if (result.isConfirmed) {
+      Swal.fire("Saved!", "", "success");
+      await patchTask(formData, tempIndex);
+      renderTask();
+      if (completedBtn.classList.contains("active")) {
+        filterCompletedTask(activeBtn, completedBtn);
+        completedBtn.classList.add("active");
+      } else {
+        filterCompletedTask(completedBtn, activeBtn);
+        activeBtn.classList.add("active");
+      }
+    } else if (result.isDenied) {
+      Swal.fire("Changes are not saved", "", "info");
+    }
+  });
+};
+
+const handleErrorAddEdit = (formData) => {
+  Swal.fire({
+    icon: "error",
+    title: "Oops...",
+    text: `${formData.title} has already existed, please try another task`,
+  });
+};
 
 // Handle form submission
-formModal.onsubmit = (e) => {
+formModal.onsubmit = async (e) => {
   e.preventDefault();
 
   const formData = Object.fromEntries(new FormData(formModal));
@@ -133,51 +221,11 @@ formModal.onsubmit = (e) => {
 
   if (cardIndex && !checkDuplication) {
     const tempIndex = cardIndex;
-    Swal.fire({
-      title: "Do you want to save the changes?",
-      showDenyButton: true,
-      showCancelButton: true,
-      confirmButtonText: "Save",
-      denyButtonText: `Don't save`,
-    }).then((result) => {
-      /* Read more about isConfirmed, isDenied below */
-      if (result.isConfirmed) {
-        Swal.fire("Saved!", "", "success");
-        todoTasks[tempIndex] = formData;
-        renderTask();
-        if (completedBtn.classList.contains("active")) {
-          filterCompletedTask(activeBtn, completedBtn);
-          completedBtn.classList.add("active");
-        } else {
-          filterCompletedTask(completedBtn, activeBtn);
-          activeBtn.classList.add("active");
-        }
-      } else if (result.isDenied) {
-        Swal.fire("Changes are not saved", "", "info");
-      }
-    });
+    handleEditTask(formData, tempIndex);
   } else if (!checkDuplication) {
-    Swal.fire({
-      title: "Added Successfully!",
-      icon: "success",
-      draggable: true,
-    });
-    todoTasks.unshift(formData);
-    renderTask();
-    if (completedBtn.classList.contains("active")) {
-      filterCompletedTask(activeBtn, completedBtn);
-      completedBtn.classList.add("active");
-    } else {
-      filterCompletedTask(completedBtn, activeBtn);
-      activeBtn.classList.add("active");
-    }
+    handleAddTask(formData);
   } else {
-    Swal.fire({
-      icon: "error",
-      title: "Oops...",
-      text: `${formData.title} has already existed, please try another task`,
-    });
-
+    handleErrorAddEdit(formData);
     return;
   }
 
@@ -186,13 +234,25 @@ formModal.onsubmit = (e) => {
   closeModal();
 };
 
-todoList.onclick = (e) => {
+const deleteTask = async (id) => {
+  try {
+    const res = await axios.delete(`http://localhost:3000/tasks/${id}`);
+  } catch (error) {
+    console.log(
+      `Cannot Get HTTP Request: ${error.status} and ${error.request}`,
+    );
+  }
+};
+
+todoList.onclick = async (e) => {
+  const taskCard = e.target.closest(".task-card");
+  if (!taskCard) return;
+  const dataIndex = taskCard.dataset.index;
+  cardIndex = dataIndex;
+  const task = todoTasks.find((task) => task.id === cardIndex);
+
   // Edit function
   const editBtn = e.target.closest(".edit-btn");
-  const dataIndex = e.target.closest(".task-card").dataset.index;
-
-  cardIndex = dataIndex;
-
   if (editBtn) {
     if (modalTitle && btnSubmit) {
       modalTitle.dataset.rootText = modalTitle.textContent;
@@ -200,8 +260,6 @@ todoList.onclick = (e) => {
       btnSubmit.dataset.rootText = btnSubmit.textContent;
       btnSubmit.textContent = "Save Task";
     }
-
-    const task = todoTasks[dataIndex];
 
     for (const key in task) {
       const input = $(`[name="${key}"]`);
@@ -219,22 +277,23 @@ todoList.onclick = (e) => {
   const deleteBtn = e.target.closest(".delete-btn");
   if (deleteBtn) {
     Swal.fire({
-      title: `Are you sure to delete "${todoTasks[dataIndex].title}" ?`,
+      title: `Are you sure to delete "${task.title}" ?`,
       text: "You won't be able to revert this!",
       icon: "warning",
       showCancelButton: true,
       confirmButtonColor: "#3085d6",
       cancelButtonColor: "#d33",
       confirmButtonText: "Yes, delete it!",
-    }).then((result) => {
+    }).then(async (result) => {
       if (result.isConfirmed) {
         Swal.fire({
           title: "Deleted!",
           text: "Your task has been deleted.",
           icon: "success",
         });
-        todoTasks.splice(dataIndex, 1);
-        renderTask();
+        await deleteTask(cardIndex);
+        await renderTask();
+        cardIndex = null;
         if (completedBtn.classList.contains("active")) {
           filterCompletedTask(activeBtn, completedBtn);
           completedBtn.classList.add("active");
@@ -250,8 +309,11 @@ todoList.onclick = (e) => {
   const completeBtn = e.target.closest(".complete-btn");
 
   if (completeBtn) {
-    todoTasks[dataIndex].isCompleted = !todoTasks[dataIndex].isCompleted;
-    renderTask();
+    task.isCompleted = !task.isCompleted;
+    await patchTask(task, cardIndex);
+    await renderTask();
+    cardIndex = null;
+
     if (completedBtn.classList.contains("active")) {
       filterCompletedTask(activeBtn, completedBtn);
       completedBtn.classList.add("active");
@@ -260,10 +322,6 @@ todoList.onclick = (e) => {
       activeBtn.classList.add("active");
     }
   }
-};
-
-const saveTasks = () => {
-  localStorage.setItem("tasks", JSON.stringify(todoTasks));
 };
 
 // Create HTML Structure for rendering
@@ -281,7 +339,7 @@ const createHtmlStructure = (tasks) => {
     taskCard.classList.add("task-card", `${task.color}`);
     if (task.isCompleted) taskCard.classList.add("completed");
 
-    taskCard.setAttribute("data-index", index);
+    taskCard.setAttribute("data-index", task.id);
 
     // taskHeader
     const taskHeader = document.createElement("div");
@@ -362,8 +420,9 @@ const createHtmlStructure = (tasks) => {
 };
 
 // Render to interface
-const renderTask = () => {
-  saveTasks();
+const renderTask = async () => {
+  await init();
+
   createHtmlStructure(todoTasks);
 };
 
